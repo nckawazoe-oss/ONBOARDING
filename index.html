@@ -344,9 +344,10 @@ async function sbFetch(path,opts={}){
 async function loadState(){
   try{
     showSaveIndicator('読み込み中...');
-    const rows=await sbFetch(`/rest/v1/members?id=eq.${DB_ROW_ID}&select=data`);
-    if(rows&&rows.length>0&&rows[0].data){
+    const rows=await sbFetch(`/rest/v1/members?select=id,data&order=id.asc&limit=1`);
+    if(rows&&rows.length>0&&rows[0].data&&rows[0].data.members){
       const loaded=rows[0].data;
+      window._stateRowId=rows[0].id;
       loaded.members.forEach(m=>{
         if(!m.phaseExpanded) m.phaseExpanded={before:false,join:false,after:false};
         if(!m.showDone) m.showDone={before:false,join:false,after:false};
@@ -364,11 +365,11 @@ async function loadState(){
 async function saveState(){
   try{
     const payload={data:state};
-    const rows=await sbFetch(`/rest/v1/members?id=eq.${DB_ROW_ID}&select=id`);
-    if(rows&&rows.length>0){
-      await sbFetch(`/rest/v1/members?id=eq.${DB_ROW_ID}`,{method:'PATCH',body:JSON.stringify(payload)});
+    if(window._stateRowId){
+      await sbFetch(`/rest/v1/members?id=eq.${window._stateRowId}`,{method:'PATCH',body:JSON.stringify(payload)});
     } else {
-      await sbFetch(`/rest/v1/members`,{method:'POST',body:JSON.stringify({id:DB_ROW_ID,...payload}),headers:{'Prefer':'return=minimal'}});
+      const res=await sbFetch(`/rest/v1/members`,{method:'POST',body:JSON.stringify(payload),headers:{'Prefer':'return=representation'}});
+      if(res&&res.length>0) window._stateRowId=res[0].id;
     }
     showSaveIndicator('保存しました');
   }catch(e){showSaveIndicator('保存できませんでした');console.error(e);}
@@ -463,9 +464,10 @@ let staffList=[];
 
 async function loadStaff(){
   try{
-    const rows=await sbFetch(`/rest/v1/members?id=eq.2&select=data`);
+    const rows=await sbFetch(`/rest/v1/members?select=id,data&order=id.asc&offset=1&limit=1`);
     if(rows&&rows.length>0&&rows[0].data&&rows[0].data.staffList){
       staffList=rows[0].data.staffList;
+      window._staffRowId=rows[0].id;
     }
   }catch(e){console.error('staff load error',e);}
   renderStaffDatalist();
@@ -475,11 +477,11 @@ async function loadStaff(){
 async function saveStaff(){
   try{
     const payload={data:{staffList}};
-    const rows=await sbFetch(`/rest/v1/members?id=eq.2&select=id`);
-    if(rows&&rows.length>0){
-      await sbFetch(`/rest/v1/members?id=eq.2`,{method:'PATCH',body:JSON.stringify(payload)});
+    if(window._staffRowId){
+      await sbFetch(`/rest/v1/members?id=eq.${window._staffRowId}`,{method:'PATCH',body:JSON.stringify(payload)});
     } else {
-      await sbFetch(`/rest/v1/members`,{method:'POST',body:JSON.stringify({id:2,...payload}),headers:{'Prefer':'return=minimal'}});
+      const res=await sbFetch(`/rest/v1/members`,{method:'POST',body:JSON.stringify(payload),headers:{'Prefer':'return=representation'}});
+      if(res&&res.length>0) window._staffRowId=res[0].id;
     }
   }catch(e){console.error('staff save error',e);}
 }
