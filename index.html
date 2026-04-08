@@ -428,13 +428,12 @@ function getLastTemplateMap(){
   const last=active[active.length-1];
   const map={};
   last.tasks.forEach(t=>{
-    if(t.name){
-      map[t.name]={
-        owner:t.owner||'',
-        phase:t.phase,
-        offsetDays:t.offsetDays!==undefined?t.offsetDays:0
-      };
-    }
+    map[t.id]={
+      name:t.name,
+      owner:t.owner||'',
+      phase:t.phase,
+      offsetDays:t.offsetDays!==undefined?t.offsetDays:0
+    };
   });
   return map;
 }
@@ -445,12 +444,13 @@ function buildTasks(joinDate,flags){
   return ALL_TASKS
     .filter(t=>t.flags.length===0||t.flags.some(f=>flags.includes(f)))
     .map((tmpl,i)=>{
-      const prev=tmplMap[tmpl.name];
+      const prev=tmplMap[i];
+      const name=prev?prev.name:tmpl.name;
       const phase=prev?prev.phase:tmpl.phase;
       const offsetDays=prev!==undefined?prev.offsetDays:tmpl.offsetDays;
       const due=new Date(jd);
       due.setDate(due.getDate()+offsetDays);
-      return {id:i,phase,name:tmpl.name,
+      return {id:i,phase,name,
         owner:prev?prev.owner:'',
         offsetDays,
         due:due.toISOString().split('T')[0],note:tmpl.note,done:false,comments:[]};
@@ -710,9 +710,11 @@ function renderTask(mi,t,showOwner){
   const dueEditKey=`dueedit-${ck}`;
   const ownerEditKey=`owneredit-${ck}`;
   const phaseEditKey=`phaseedit-${ck}`;
+  const nameEditKey=`nameedit-${ck}`;
   const isDueEditing=!!openComments[dueEditKey];
   const isOwnerEditing=!!openComments[ownerEditKey];
   const isPhaseEditing=!!openComments[phaseEditKey];
+  const isNameEditing=!!openComments[nameEditKey];
   const isOpen=!!openComments[ck];
   const cCount=t.comments.length;
   const archived=state.members[mi].archived;
@@ -723,6 +725,11 @@ function renderTask(mi,t,showOwner){
   }
   const noteHTML=t.note?`<div class="task-note">${t.note}</div>`:'';
   const checkClick=archived?'':`onclick="toggleTask(${mi},${t.id})"`;
+  const nameHTML=archived
+    ?`<span class="task-name ${t.done?'done':''}">${t.name}</span>`
+    :isNameEditing
+      ?`<input type="text" id="name-input-${ck}" value="${t.name}" style="font-size:12px;height:24px;padding:0 6px;border:1px solid var(--accent);border-radius:5px;outline:none;color:var(--text-primary);flex:1;min-width:0" onblur="saveName(${mi},${t.id},'${ck}','${nameEditKey}')" onkeydown="if(event.key==='Enter')saveName(${mi},${t.id},'${ck}','${nameEditKey}')">`
+      :`<span class="task-name ${t.done?'done':''}" style="${t.done?'':'cursor:pointer;'}text-decoration:${t.done?'line-through':'underline dotted'}" onclick="${t.done?'':'startNameEdit(\''+nameEditKey+'\',\''+ck+'\')'}">${t.name}</span>`;
   const dueHTML=archived
     ?`<span class="${due.cls}">${due.label}</span>`
     :isDueEditing
@@ -749,7 +756,7 @@ function renderTask(mi,t,showOwner){
     <div class="task-content">
       <div class="task-top">
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <span class="task-name ${t.done?'done':''}">${t.name}</span>
+          ${nameHTML}
           ${phaseHTML}
         </div>
         <div class="task-right">
@@ -761,6 +768,24 @@ function renderTask(mi,t,showOwner){
       ${noteHTML}${commentsHTML}
     </div>
   </div>`;
+}
+
+function startNameEdit(nameEditKey,ck){
+  openComments[nameEditKey]=true;
+  render();
+  setTimeout(()=>{
+    const el=document.getElementById(`name-input-${ck}`);
+    if(el){el.focus();el.select();}
+  },50);
+}
+
+function saveName(mi,tid,ck,nameEditKey){
+  const el=document.getElementById(`name-input-${ck}`);
+  if(!el) return;
+  const t=state.members[mi].tasks.find(t=>t.id===tid);
+  if(t&&el.value.trim()){t.name=el.value.trim();debouncedSave();}
+  openComments[nameEditKey]=false;
+  render();
 }
 
 function startOwnerEdit(ownerEditKey,ck){
