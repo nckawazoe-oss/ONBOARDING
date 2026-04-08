@@ -420,14 +420,26 @@ const OWNER_VIEWS={hr:'人事担当',it:'IT担当',somu:'総務担当'};
 function ownerPillClass(o){
   return 'own-other';
 }
+
+function getLastOwnerMap(){
+  const active=state.members.filter(m=>!m.archived);
+  if(active.length===0) return {};
+  const last=active[active.length-1];
+  const map={};
+  last.tasks.forEach(t=>{if(t.name&&t.owner) map[t.name]=t.owner;});
+  return map;
+}
+
 function buildTasks(joinDate,flags){
   const jd=new Date(joinDate);
+  const ownerMap=getLastOwnerMap();
   return ALL_TASKS
     .filter(t=>t.flags.length===0||t.flags.some(f=>flags.includes(f)))
     .map((tmpl,i)=>{
       const due=new Date(jd);
       due.setDate(due.getDate()+tmpl.offsetDays);
-      return {id:i,phase:tmpl.phase,name:tmpl.name,owner:'',
+      return {id:i,phase:tmpl.phase,name:tmpl.name,
+        owner:ownerMap[tmpl.name]||'',
         due:due.toISOString().split('T')[0],note:tmpl.note,done:false,comments:[]};
     });
 }
