@@ -421,25 +421,37 @@ function ownerPillClass(o){
   return 'own-other';
 }
 
-function getLastOwnerMap(){
+function getLastTemplateMap(){
   const active=state.members.filter(m=>!m.archived);
   if(active.length===0) return {};
   const last=active[active.length-1];
   const map={};
-  last.tasks.forEach(t=>{if(t.name&&t.owner) map[t.name]=t.owner;});
+  last.tasks.forEach(t=>{
+    if(t.name){
+      map[t.name]={
+        owner:t.owner||'',
+        phase:t.phase,
+        offsetDays:t.offsetDays!==undefined?t.offsetDays:0
+      };
+    }
+  });
   return map;
 }
 
 function buildTasks(joinDate,flags){
   const jd=new Date(joinDate);
-  const ownerMap=getLastOwnerMap();
+  const tmplMap=getLastTemplateMap();
   return ALL_TASKS
     .filter(t=>t.flags.length===0||t.flags.some(f=>flags.includes(f)))
     .map((tmpl,i)=>{
+      const prev=tmplMap[tmpl.name];
+      const phase=prev?prev.phase:tmpl.phase;
+      const offsetDays=prev!==undefined?prev.offsetDays:tmpl.offsetDays;
       const due=new Date(jd);
-      due.setDate(due.getDate()+tmpl.offsetDays);
-      return {id:i,phase:tmpl.phase,name:tmpl.name,
-        owner:ownerMap[tmpl.name]||'',
+      due.setDate(due.getDate()+offsetDays);
+      return {id:i,phase,name:tmpl.name,
+        owner:prev?prev.owner:'',
+        offsetDays,
         due:due.toISOString().split('T')[0],note:tmpl.note,done:false,comments:[]};
     });
 }
@@ -695,8 +707,10 @@ function renderTask(mi,t,showOwner){
   const ck=`${state.members[mi].id}-${t.id}`;
   const dueEditKey=`dueedit-${ck}`;
   const ownerEditKey=`owneredit-${ck}`;
+  const phaseEditKey=`phaseedit-${ck}`;
   const isDueEditing=!!openComments[dueEditKey];
   const isOwnerEditing=!!openComments[ownerEditKey];
+  const isPhaseEditing=!!openComments[phaseEditKey];
   const isOpen=!!openComments[ck];
   const cCount=t.comments.length;
   const archived=state.members[mi].archived;
@@ -718,11 +732,24 @@ function renderTask(mi,t,showOwner){
     :isOwnerEditing
       ?`<input type="text" id="owner-input-${ck}" value="${t.owner||''}" list="staffDatalist" placeholder="担当者名" style="font-size:11px;height:24px;padding:0 6px;border:1px solid var(--accent);border-radius:5px;outline:none;width:90px;color:var(--text-primary)" onblur="saveOwner(${mi},${t.id},'${ck}','${ownerEditKey}')" onkeydown="if(event.key==='Enter')saveOwner(${mi},${t.id},'${ck}','${ownerEditKey}')">`
       :`<span class="owner-pill own-other" style="cursor:pointer;text-decoration:underline dotted" onclick="startOwnerEdit('${ownerEditKey}','${ck}')">${ownerLabel}</span>`;
+  const phaseLabels={before:'入社前',join:'入社日',after:'入社後'};
+  const phaseHTML=archived
+    ?''
+    :isPhaseEditing
+      ?`<select id="phase-input-${ck}" style="font-size:11px;height:24px;padding:0 4px;border:1px solid var(--accent);border-radius:5px;outline:none;color:var(--text-primary)" onchange="savePhase(${mi},${t.id},'${ck}','${phaseEditKey}')" onblur="savePhase(${mi},${t.id},'${ck}','${phaseEditKey}')">
+          <option value="before" ${t.phase==='before'?'selected':''}>入社前</option>
+          <option value="join" ${t.phase==='join'?'selected':''}>入社日</option>
+          <option value="after" ${t.phase==='after'?'selected':''}>入社後</option>
+        </select>`
+      :`<span style="font-size:10px;color:var(--text-muted);cursor:pointer;text-decoration:underline dotted" onclick="startPhaseEdit('${phaseEditKey}')">${phaseLabels[t.phase]||t.phase}</span>`;
   return `<div class="task-row ${t.done?'task-done-row':''}">
     <div class="check ${t.done?'done':''}" ${checkClick} style="${archived?'cursor:default':''}"></div>
     <div class="task-content">
       <div class="task-top">
-        <span class="task-name ${t.done?'done':''}">${t.name}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <span class="task-name ${t.done?'done':''}">${t.name}</span>
+          ${phaseHTML}
+        </div>
         <div class="task-right">
           ${ownerHTML}
           ${dueHTML}
@@ -752,6 +779,20 @@ function saveOwner(mi,tid,ck,ownerEditKey){
   render();
 }
 
+function startPhaseEdit(phaseEditKey){
+  openComments[phaseEditKey]=true;
+  render();
+}
+
+function savePhase(mi,tid,ck,phaseEditKey){
+  const el=document.getElementById(`phase-input-${ck}`);
+  if(!el) return;
+  const t=state.members[mi].tasks.find(t=>t.id===tid);
+  if(t){t.phase=el.value;debouncedSave();}
+  openComments[phaseEditKey]=false;
+  render();
+}
+
 function startDueEdit(dueEditKey){
   openComments[dueEditKey]=true;
   render();
@@ -768,8 +809,14 @@ function saveDue(mi,tid,ck,dueEditKey){
   const val=el.value;
   if(val){
     const t=state.members[mi].tasks.find(t=>t.id===tid);
-    if(t) t.due=val;
-    debouncedSave();
+    if(t){
+      t.due=val;
+      const jd=new Date(state.members[mi].joinDate);
+      const dd=new Date(val);
+      jd.setHours(0,0,0,0);dd.setHours(0,0,0,0);
+      t.offsetDays=Math.round((dd-jd)/86400000);
+      debouncedSave();
+    }
   }
   openComments[dueEditKey]=false;
   render();
