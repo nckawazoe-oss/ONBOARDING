@@ -435,9 +435,30 @@ function buildTasks(joinDate,flags){
 let currentView='all';
 let showArchived=false;
 let openComments={};
-let staffList=JSON.parse(localStorage.getItem('onboarding_staff')||'[]');
+let staffList=[];
 
-function saveStaff(){localStorage.setItem('onboarding_staff',JSON.stringify(staffList));}
+async function loadStaff(){
+  try{
+    const rows=await sbFetch(`/rest/v1/members?id=eq.2&select=data`);
+    if(rows&&rows.length>0&&rows[0].data&&rows[0].data.staffList){
+      staffList=rows[0].data.staffList;
+    }
+  }catch(e){console.error('staff load error',e);}
+  renderStaffDatalist();
+  renderStaffList();
+}
+
+async function saveStaff(){
+  try{
+    const payload={data:{staffList}};
+    const rows=await sbFetch(`/rest/v1/members?id=eq.2&select=id`);
+    if(rows&&rows.length>0){
+      await sbFetch(`/rest/v1/members?id=eq.2`,{method:'PATCH',body:JSON.stringify(payload)});
+    } else {
+      await sbFetch(`/rest/v1/members`,{method:'POST',body:JSON.stringify({id:2,...payload}),headers:{'Prefer':'return=minimal'}});
+    }
+  }catch(e){console.error('staff save error',e);}
+}
 
 function renderStaffDatalist(){
   const dl=document.getElementById('staffDatalist');
@@ -952,6 +973,7 @@ document.getElementById('submitMember').addEventListener('click',()=>{
 
 renderStaffDatalist();
 loadState().then(loaded=>{state=loaded;render();});
+loadStaff();
 </script>
 </body>
 </html>
